@@ -1,0 +1,443 @@
+---
+title: "Tugas Kuliah 2 MPDW"
+author: "Nayla Tiara Zahira"
+date: "2026-08-29"
+output: rmdformats::readthedown
+---
+
+### Packages
+```{r}
+library(dplyr)
+library(TTR)
+library(forecast)
+library(lmtest) #digunakan untuk uji formal pendeteksian autokorelasi
+library(orcutt) #untuk membuat model regresi Cochrane-Orcutt
+library(HoRM) #untuk membuat model regresi Hildreth-Lu
+library(rio)
+```
+
+# Impor Data
+# data 1 - Market Share & Price
+```{r}
+data1 <- import("https://raw.githubusercontent.com/naylatiara/MPDW/refs/heads/main/Pertemuan%202/Tugas%20Praktikum%202%20MPDW%20-%20Sheet1.csv")
+
+head(data1)
+```
+
+## Eksplorasi Data
+```{r}
+View(data1)
+str(data1)
+dim(data1)
+```
+
+```{r}
+#Plot eksplorasi hubungan Y dan X
+plot(data1$price, data1$market_share, pch=20, col="red",
+     main="Scatter Plot Price vs Market Share", 
+     xlab= "Price", 
+     ylab="Market Share")
+```
+
+## Pemodelan OLS 
+```{r}
+#Model OLS Biasa
+model1 <- lm(market_share ~ price, data = data1)
+summary(model1)
+```
+
+Berdasarkan hasil analisis regresi linear sederhana (OLS), diperoleh persamaan regresi Market Share = 26.910 -24.290 x Price. Hubungan antara kedua variabel menunjukkan arah regatif, dimana setiap kenaikan Price sebesar 1 satuan diprediksi akan menurunkan Market share rata-rata sebesar 24.290 unit. 
+
+Pengaruh Price terhadap Market share ini terbukti signifikan secara statistik pada taraf nyata 5% ($p\text{-value} = 3.02 \times 10^{-13} < 0.05$).
+
+Selain itu, uji F menunjukkan bahwa model regresi yang dibentuk sangat layak secara keseluruan ($F = 350.3, p\text{-value} < 0.05$)
+
+Nilai koefisian determinasi ($R^2$) sebesar `0.9511` membuktikan bahwa sebesar 95.11% keragaman oada Market Share dapat dijelaskan oleh variabel Price.
+
+```{r}
+#Sisaan dan fitted value
+sisaan1 <- residuals(model1)
+fitValue1 <- predict(model1)
+
+#Diagnostik dengan eksploratif
+par(mfrow = c(2,2))
+qqnorm(sisaan1)
+qqline(sisaan1, col = "steelblue", lwd=2)
+
+plot(fitValue1, sisaan1, col = "steelblue", pch=20, xlab ="Sisaan", ylab="Fitted Values", main="Sisaan vs Fitted Values")
+
+abline(a=0, b=0, lwd=2)
+hist(sisaan1, col="steelblue")
+
+plot(seq(1, 20, 1), sisaan1, col="red", pch=20, xlab = "Sisaan", ylab="Order", main="Sisaan vs Order")
+lines(seq(1, 20, 1), sisaan1, col="steelblue")
+abline(a=0, b=0, lwd=2)
+```
+
+Berdasarkan eksplorasi grafik sisaan, pada Normal Q-Q plot dan Histogram, titik-titik sisaan menyebar mengikuti garis lurus diagonal dan sebaran simetris di sekitar nol, yang mengindikasikan bahwa sisaan berdistribusi normal.
+
+grafik Sisaan vs Fitted Values memperlihatkan sebaran titik yang acak di sekitar nol tanpa ada pola corong, menandakan asumsi homokedestisitas terpenuhi.
+
+Namun, pada plot Sisaan vs Order, terlihat adanya pola gelombang atau pengelompokkan nilai sisaan positif dan negatif secara berurutan. Hal ini mengindikasikan adanya masalah autokorelasi pada sisaan model OLS. 
+
+Untuk lebih lanjut akan digunakan uji formal melihat normalitas sisaan dan plot ACF dan PACF untuk melihat apakah ada autokorelasi atau tidak.
+
+```{r}
+#Melihat Sisaan Menyebar Normal/Tidak
+#H0: sisaan mengikuti sebaran normal
+#H1: sisaan tidak mengikuti sebaran normal
+shapiro.test(sisaan1)
+```
+```{r}
+ks.test(sisaan1, "pnorm", mean=mean(sisaan1), sd=sd(sisaan1))
+```
+
+Berdasarkan uji formal Saphiro-Wilk dan Kolmogorov-Smirnov didapatkan nilai $p\text{-value} > \alpha \ (5\%)$. Artinya, cukup bukti untuk menyatakan sisaan berdistribusi normal.
+
+### ACF dan PACF
+```{r}
+#ACF dan PACF identifikasi autokorelasi
+par(mfrow = c(1,2))
+acf(sisaan1)
+pacf(sisaan1)
+```
+
+Berdasarkan plot ACF dan PACF, terlihat semua dalam rentang batas dan tidak ada lag yang signifikan. Namun, untuk lebih memastikan akan dilakukan uji formal dengan uji Durbin Watson.
+
+### Uji Durbin-Watson
+```{r}
+#Deteksi autokorelasi dengan uji-Durbin Watson
+#H0: tidak ada autokorelasi
+#H1: ada autokorelasi
+dwtest(model1)
+```
+
+Berdasarkan hasil DW Test, didapatkan nilai $DW = 1.1358$ dan *p-value* = $0.009813$. Berdasarkan tabel Durbin-Watson diperoleh nilai $DL = 1.2015$ dan $DU = 1.4107$. Nilai DW yang diperoleh terbukti lebih kecil dari nilai $d_L$ ($DW < d_L$). Hal ini didukung oleh nilai $p\text{-value} < \alpha \ (5\%)$ yang menunjukkan keputusan tolak $H_0$, sehingga cukup bukti untuk menyatakan terdapat autokorelasi positif pada sisaan. Oleh karena itu, diperlukan penanganan autokorelasi. Penanganan yang akan digunakan menggunakan dua metode, yaitu Cochrane-Orcutt dan Hildreth-Lu.
+
+## Penanganan Autokorelasi
+### Metode Cochrane-Orcutt
+```{r}
+#Penanganan Autokorelasi Chocrane-Orcutt
+model1CO <- cochrane.orcutt(model1)
+model1CO
+```
+
+Hasil keluaran model setelah dilakukan penanganan dengan metode Cochrane-Orcutt adalah sebagai berikut:$$\widehat{Y}_i = 26.72209 - 24.08413 X_t$$Nilai $\hat{\rho}$ optimum yang digunakan dalam iterasi (sebanyak 8 kali iterasi) adalah $0.425232$.Hasil penanganan juga menunjukkan bahwa statistik Durbin-Watson ($DW$) dan $p\text{-value}$ mengalami peningkatan, dari yang semula $DW = 1.13582$ ($p\text{-value} = 0.009813$) menjadi $DW = 1.95804$ dan $p\text{-value} = 0.4151$. Nilai $DW$ setelah transformasi ini sudah berada pada rentang $d_U < DW < 4 - d_U$, yaitu $1.4114 < 1.95804 < 2.5886$. Hal tersebut juga didukung oleh nilai $p\text{-value} > \alpha \ (5\%)$, yang berarti belum cukup bukti untuk menyatakan adanya autokorelasi pada sisaan pada taraf nyata 5% 
+
+
+### Metode Hildreth-Lu
+```{r}
+#Penanganan Autokorelasi Hildreth lu
+# Hildreth-Lu
+hildreth.lu.func <- function(r, model){
+  x <- model.matrix(model)[,-1]
+  y <- model.response(model.frame(model))
+  n <- length(y)
+  t <- 2:n
+  y <- y[t] - r * y[t-1]
+  x <- x[t] - r * x[t-1]
+  
+  return(lm(y ~ x))
+}
+
+# Pencarian rho yang meminimumkan SSE
+r <- seq(0.1, 0.9, by = 0.1)
+
+# UBAH 'model' MENJADI 'model1' DI BARIS INI:
+tab <- data.frame("rho" = r, "SSE" = sapply(r, function(i){deviance(hildreth.lu.func(i, model1))}))
+round(tab, 4)
+```
+
+Pada hasil di atas terlihat $ρ$ minimum ketika 0.4. Namun, hasil tersebut masih kurang teliti sehingga akan dicari kembali $ρ$ yang lebih optimum dengan ketelitian yang lebih. Jika sebelumnya jarak antar $ρ$ yang dicari adalah 0.1, kali ini jarak antar $ρ$ adalah 0.001 dan dilakukan pada selang 0.2 sampai dengan 0.5.
+
+```{r}
+#Rho optimal di sekitar 0.4
+rOpt1 <- seq(0.2,0.5, by= 0.001)
+tabOpt1 <- data.frame("rho" = rOpt1, "SSE" = sapply(rOpt1, function(i){deviance(hildreth.lu.func(i, model1))}))
+head(tabOpt1[order(tabOpt1$SSE),])
+```
+
+```{r}
+#Grafik SSE optimum
+par(mfrow = c(1,1))
+plot(tab$SSE ~ tab$rho , type = "l", xlab = "Rho", ylab = "SSE")
+abline(v = tabOpt1[tabOpt1$SSE==min(tabOpt1$SSE),"rho"], lty = 2, col="red",lwd=2)
+text(x=0.425, y=2.659368, labels = "rho=0.425", cex = 0.8)
+```
+
+Perhitungan yang dilakukan aplikasi `R` menunjukkan bahwa nilai $ρ$ optimum, yaitu saat SSE terkecil terdapat pada nilai $ρ=0.425$. Hal tersebut juga ditunjukkan pada plot. Selanjutnya, model dapat didapatkan dengan mengevaluasi nilai $ρ$ ke dalam fungsi `hildreth.lu.func`, serta dilanjutkan dengan pengujian autokorelasi dengan uji Durbin-Watson. Namun, setelah pengecekan tersebut tidak lupa koefisien regresi tersebut digunakan untuk transformasi balik. Persamaan hasil transformasi itulah yang menjadi persamaan sesungguhnya.
+
+```{r}
+#Model terbaik
+model1HL <- hildreth.lu.func(0.341, model1)
+summary(model1HL)
+```
+```{r}
+#Transformasi Balik
+cat("y = ", coef(model1HL)[1]/(1-0.341), "+", coef(model1HL)[2],"x", sep = "")
+```
+
+Setelah dilakukan tranformasi balik, didapatkan model dengan metode Hildreth-Lu sebagai berikut. $$y_i=26.90551+-24.30265x_t$$
+
+```{r}
+#Deteksi autokorelasi
+dwtest(model1HL)
+```
+
+Hasil uji Durbin-Watson juga menunjukkan bahwa nilai $DW$ sebesar $1.8146$ berada pada selang daerah tidak ada autokorelasi, yaitu pada rentang $d_U < DW < 4 - d_U$ atau $1.4114 < 1.8146 < 2.5886$. Hal tersebut juga didukung oleh $p\text{-value}$ sebesar $0.2808$, di mana $p\text{-value} > \alpha \ (5\%)$. Artinya tak tolak $H_0$ atau belum cukup bukti menyatakan bahwa ada autokorelasi dalam sisaan model dengan metode Hildreth-Lu pada taraf nyata 5%
+
+## Perbandingan Metode pada data 1
+```{r}
+#Perbandingan
+# Hitung SSE
+sseModel1awal <- anova(model1)$`Sum Sq`[-1]
+sseModel1CO   <- sum(model1CO$residuals^2) 
+sseModel1HL   <- anova(model1HL)$`Sum Sq`[-1]
+
+# Hitung MSE (menggunakan panjang data Market_share)
+n <- length(data1$market_share)
+mseModel1awal <- sseModel1awal / n
+mseModel1CO   <- sseModel1CO / n
+mseModel1HL   <- sseModel1HL / n
+
+# Matriks Perbandingan
+akurasi <- matrix(c(sseModel1awal, sseModel1CO, sseModel1HL,
+                    mseModel1awal, mseModel1CO, mseModel1HL), 
+                  nrow = 2, ncol = 3, byrow = TRUE)
+
+colnames(akurasi) <- c("Model Awal", "Model Cochrane-Orcutt", "Model Hildreth-Lu")
+row.names(akurasi) <- c("SSE", "MSE")
+
+akurasi
+```
+
+Berdasarkan tabel perbandingan nilai SSE dan MSE, Model Hildreth-Lu menghasilkan nilai SSE ($2.6799$) dan MSE ($0.1340$) paling kecil dibandingkan Model Awal OLS maupun Model Cochrane-Orcutt. Meskipun nilai SSE pada Model Cochrane-Orcutt ($3.3160$) sedikit lebih besar dibandingkan OLS awal ($3.3082$), kedua metode penanganan (Cochrane-Orcutt dan Hildreth-Lu) telah berhasil mengatasi masalah autokorelasi (dibuktikan dengan nilai $p\text{-value} > 0.05$ pada uji Durbin-Watson setelah penanganan). Dengan memperhatikan kriteria kebaikan model (SSE dan MSE terkecil), Model Hildreth-Lu dipilih sebagai model terbaik untuk data ini.
+
+
+# data 2 - Sales & Advertising
+```{r}
+data2 <- import("https://raw.githubusercontent.com/naylatiara/MPDW/refs/heads/main/Pertemuan%202/Tugas%20Praktikum%202%20MPDW%20-%20part%202%20-%20Sheet1.csv")
+
+head(data2)
+```
+
+## Eksplorasi Data
+```{r}
+View(data2)
+str(data2)
+dim(data2)
+```
+
+```{r}
+#Plot eksplorasi hubungan Y dan X
+plot(data2$advertising, data2$sales, pch=20, col="red",
+     main="Scatter Plot Advertising vs Sales", 
+     xlab= "Advertising", 
+     ylab="Sales")
+```
+
+##Pemodelan OLS 
+```{r}
+#Model OLS Biasa
+model2 <- lm(sales ~ advertising, data = data2)
+summary(model2)
+```
+
+Berdasarkan hasil analisis regresi linear sederhana (OLS), diperoleh persamaan regresi Market Share = 5.96513 + 0.71035 x advertising. Hubungan antara kedua variabel menunjukkan arah positif, dimana setiap kenaikan advertising sebesar 1 satuan diprediksi akan meningkatkan sales rata-rata sebesar 0.71035  unit. 
+
+Pengaruh Price terhadap Market share ini terbukti signifikan secara statistik pada taraf nyata 5% ($p\text{-value} = 2 \times 10^{-16} < 0.05$).
+
+Selain itu, uji F menunjukkan bahwa model regresi yang dibentuk sangat layak secara keseluruan ($F = 902.3, p\text{-value} < 0.05$)
+
+Nilai koefisian determinasi ($R^2$) sebesar `0.9596` membuktikan bahwa sebesar 95.96% keragaman pada Sales dapat dijelaskan oleh variabel Advertising.
+
+```{r}
+#Sisaan dan fitted value
+sisaan2 <- residuals(model2)
+fitValue2 <- predict(model2)
+
+#Diagnostik dengan eksploratif
+par(mfrow = c(2,2))
+qqnorm(sisaan2)
+qqline(sisaan2, col = "steelblue", lwd=2)
+
+plot(fitValue2, sisaan2, col = "steelblue", pch=20, xlab ="Sisaan", ylab="Fitted Values", main="Sisaan vs Fitted Values")
+
+abline(a=0, b=0, lwd=2)
+hist(sisaan2, col="steelblue")
+
+plot(seq(1, 40, 1), sisaan2, col="red", pch=20, xlab = "Sisaan", ylab="Order", main="Sisaan vs Order")
+lines(seq(1, 40, 1), sisaan2, col="steelblue")
+abline(a=0, b=0, lwd=2)
+```
+
+Berdasarkan eksplorasi grafik sisaan, pada Normal Q-Q Plot dan Histogram, titik-titik sisaan masih cenderung menyebar di sekitar garis lurus diagonal meskipun distribusi pada histogram memperlihatkan dua puncak. Hal ini mengindikasikan bahwa sisaan secara umum mendekati distribusi normal.
+
+Berbeda dari model linier standar, grafik Sisaan vs Fitted Values tidak menyebar secara acak, melainkan membentuk pola kurva melengkung (parabola terbalik). Hal ini mengindikasikan adanya indikasi masalah non-linearitas atau ketidakpasan model (model misspecification).
+
+Sementara itu, pada plot Sisaan vs Order, terlihat pola gelombang yang sangat jelas dan teratur (membentuk pola kurva naik lalu turun secara berurutan). Hal ini mengindikasikan adanya masalah autokorelasi positif yang cukup kuat pada sisaan model OLS.
+
+Untuk memastikan kondisi sisaan lebih lanjut, akan dilakukan uji formal normalitas sisaan (seperti Shapiro-Wilk Test) serta evaluasi plot ACF dan PACF untuk mengidentifikasi keberadaan autokorelasi secara lebih presisi.
+
+```{r}
+#Melihat Sisaan Menyebar Normal/Tidak
+#H0: sisaan mengikuti sebaran normal
+#H1: sisaan tidak mengikuti sebaran normal
+shapiro.test(sisaan2)
+```
+```{r}
+ks.test(sisaan2, "pnorm", mean=mean(sisaan2), sd=sd(sisaan2))
+```
+
+Berdasarkan uji formal normalitas sisaan, diperoleh hasil yang sedikit berbeda antara kedua metode. Pada uji Kolmogorov-Smirnov, diperoleh nilai $D = 0.15458$ dengan $p\text{-value} = 0.2948 > \alpha \ (5\%)$, yang menunjukkan bahwa sisaan berdistribusi normal. Namun, pada uji Shapiro-Wilk (yang lebih sensitif untuk ukuran sampel ini), diperoleh nilai $W = 0.93205$ dengan $p\text{-value} = 0.0188 < \alpha \ (5\%)$. Nilai $p\text{-value} < 0.05$ ini mengindikasikan tolak $H_0$, sehingga belum cukup bukti untuk menyatakan sisaan berdistribusi normal pada taraf nyata 5%.
+
+### Menambahkan Suku Polinomial (Suku Kuadratik X^2)
+Metode untuk mengatasi permasalahan model missconception pola kurva melengkung (parabola terbalik) seperti yang terlihat pada grafik Sisaan vs Fitted Values
+```{r}
+# Membentuk model regresi polinomial kuadratik
+model2_poly <- lm(sales ~ advertising + I(advertising^2), data = data2)
+
+# Uji RESET ulang pada model polinomial
+library(lmtest)
+resettest(model2_poly)
+
+# Uji normalitas sisaannya
+shapiro.test(residuals(model2_poly))
+```
+
+Berdasarkan hasil uji Ramsey RESET pada model regresi polinomial kuadratik (model2_poly), diperoleh nilai statistik $RESET = 3.0261$ dengan $p\text{-value} = 0.06135 > \alpha \ (5\%)$. Hal ini mengindikasikan keputusan gagal tolak $H_0$, sehingga belum cukup bukti untuk menyatakan adanya masalah spesifikasi model (model misspecification).Keberhasilan penanganan ini didukung oleh uji normalitas Shapiro-Wilk pada sisaan model kuadratik yang menghasilkan nilai $W = 0.97386$ dengan $p\text{-value} = 0.4726 > \alpha \ (5\%)$. Karena $p\text{-value} > 0.05$, dapat disimpulkan bahwa sisaan model telah berdistribusi normal secara sempurna pada taraf nyata 5%.Dengan demikian, penambahan suku kuadratik ($X^2$) merupakan metode penanganan yang tepat untuk meluruskan pola hubungan non-linier antara variabel Sales dan Advertising.
+
+### ACF dan PACF
+```{r}
+# Definisi sisaan dari model kuadratik yang sudah pas
+sisaan2_poly <- residuals(model2_poly)
+
+# Plot ACF dan PACF dari sisaan baru
+par(mfrow = c(1, 2))
+acf(sisaan2_poly)
+pacf(sisaan2_poly)
+```
+
+Berdasarkan grafik Autocorrelation Function (ACF) dan Partial Autocorrelation Function (PACF) dari sisaan model kuadratik (sisaan2_poly), terlihat bahwa nilai korelasi pada seluruh lag berada di dalam batas interval kepercayaan $95\%$ dan tidak ada lag yang signifikan. Namun, untuk lebih memastikan, akan dilakukan uji formal menggunakan uji Durbin-Watson guna mendeteksi ada atau tidaknya autokorelasi pada sisaan model secara statistik.
+
+### Uji Durbin-Watson
+```{r}
+#Deteksi autokorelasi dengan uji-Durbin Watson
+#H0: tidak ada autokorelasi
+#H1: ada autokorelasi
+dwtest(model2_poly)
+```
+
+Berdasarkan hasil uji Durbin-Watson pada model kuadratik, diperoleh nilai statistik $DW = 1.4092$ dengan $p\text{-value} = 0.01117$. Berdasarkan tabel Durbin-Watson untuk $n = 40$ dan $k = 2$ pada taraf nyata $5\%$, diperoleh nilai batas $d_L = 1.3908$ dan $d_U = 1.6000$. Nilai $DW$ berada di antara batas bawah dan batas atas ($d_L < DW < d_U$), yang menunjukkan daerah ragu-ragu (inconclusive). Namun, didukung oleh nilai $p\text{-value} = 0.01117 < \alpha \ (5\%)$, diambil keputusan tolak $H_0$ yang mengindikasikan cukup bukti terdapat autokorelasi positif pada sisaan. Oleh karena itu, penanganan autokorelasi tetap diperlukan dan akan dilakukan menggunakan dua metode, yaitu Cochrane-Orcutt dan Hildreth-Lu.
+
+## Penanganan Autokorelasi
+### Metode Cochrane-Orcutt
+```{r}
+#Penanganan Autokorelasi Chocrane-Orcutt
+model2CO <- cochrane.orcutt(model2_poly)
+model2CO
+```
+
+Hasil keluaran model setelah dilakukan penanganan autokorelasi dengan metode Cochrane-Orcutt adalah sebagai berikut:$$\widehat{\text{Sales}}_i = -2.618341 + 1.869863 \text{ Advertising}_t - 0.037146 \text{ Advertising}_t^2$$Nilai $\hat{\rho}$ optimum yang diperoleh melalui proses iterasi (sebanyak 13 kali iterasi) adalah $0.285513$.Hasil penanganan menunjukkan bahwa statistik Durbin-Watson ($DW$) dan nilai $p\text{-value}$ mengalami peningkatan yang signifikan, yaitu dari model awal sebesar $DW = 1.40917$ ($p\text{-value} = 0.01117$) menjadi $DW = 1.69082$ dengan $p\text{-value} = 0.0913$.Nilai $DW$ setelah transformasi ini terbukti berada pada rentang tanpa autokorelasi ($d_U < DW < 4 - d_U$), yaitu $1.6000 < 1.69082 < 2.4000$. Keberhasilan penanganan ini juga didukung oleh nilai $p\text{-value} = 0.0913 > \alpha \ (5\%)$, yang menunjukkan keputusan gagal tolak $H_0$. Dengan demikian, belum cukup bukti untuk menyatakan adanya autokorelasi pada sisaan setelah transformasi Cochrane-Orcutt pada taraf nyata 5%
+
+
+### Metode Hildreth-Lu
+```{r}
+#Penanganan Autokorelasi Hildreth lu
+# Fungsi Hildreth-Lu yang diperbaiki untuk regresi berganda/kuadratik
+hildreth.lu.func <- function(r, model){
+  X <- model.matrix(model)[, -1] # Mengambil kolom X dan X^2
+  Y <- model.response(model.frame(model))
+  n <- length(Y)
+  
+  # Transformasi Y
+  Y_trans <- Y[2:n] - r * Y[1:(n-1)]
+  
+  # Transformasi X dan X^2 (menggunakan sweep agar berlaku untuk semua kolom)
+  X_trans <- X[2:n, ] - r * X[1:(n-1), ]
+  
+  return(lm(Y_trans ~ X_trans))
+}
+
+# Pencarian rho yang meminimumkan SSE
+r <- seq(0.1, 0.6, by = 0.05)
+
+# UBAH 'model' MENJADI 'model2' DI BARIS INI:
+tab <- data.frame(
+  "rho" = r, 
+  "SSE" = sapply(r, function(i){ deviance(hildreth.lu.func(i, model2_poly)) })
+)
+round(tab, 4)
+```
+
+Pada hasil di atas terlihat $ρ$ minimum ketika 0.30. Namun, hasil tersebut masih kurang teliti sehingga akan dicari kembali $ρ$ yang lebih optimum dengan ketelitian yang lebih. Jika sebelumnya jarak antar $ρ$ yang dicari adalah 0.1, kali ini jarak antar $ρ$ adalah 0.001 dan dilakukan pada selang 0.2 sampai dengan 0.5.
+
+```{r}
+#Rho optimal di sekitar 0.4
+rOpt2 <- seq(0.20, 0.40, by = 0.001)
+tabOpt2 <- data.frame(
+  "rho" = rOpt2, 
+  "SSE" = sapply(rOpt2, function(i){ deviance(hildreth.lu.func(i, model2_poly)) })
+)
+rho_best <- tabOpt2[which.min(tabOpt2$SSE), "rho"]
+sse_best <- min(tabOpt2$SSE)
+
+# Cari rho optimum final
+head(tabOpt2[order(tabOpt2$SSE),])
+```
+
+```{r}
+#Grafik SSE optimum
+par(mfrow = c(1,1))
+plot(tab$SSE ~ tab$rho, type = "l", xlab = "Rho", ylab = "SSE", main = "Pencarian Rho Optimum Hildreth-Lu")
+abline(v = rho_best, lty = 2, col = "red", lwd = 2)
+text(x = rho_best + 0.05, y = sse_best + 0.01, labels = paste0("rho = ", rho_best), cex = 0.8)
+```
+
+Perhitungan yang dilakukan aplikasi `R` menunjukkan bahwa nilai $ρ$ optimum, yaitu saat SSE terkecil terdapat pada nilai $ρ=0.286$. Hal tersebut juga ditunjukkan pada plot. Selanjutnya, model dapat didapatkan dengan mengevaluasi nilai $ρ$ ke dalam fungsi `hildreth.lu.func`, serta dilanjutkan dengan pengujian autokorelasi dengan uji Durbin-Watson. Namun, setelah pengecekan tersebut tidak lupa koefisien regresi tersebut digunakan untuk transformasi balik. Persamaan hasil transformasi itulah yang menjadi persamaan sesungguhnya.
+
+```{r}
+#Model terbaik
+model2HL <- hildreth.lu.func(0.286, model2_poly)
+summary(model2HL)
+```
+```{r}
+#Transformasi Balik
+cat("y = ", coef(model2HL)[1]/(1-0.286), "+", coef(model2HL)[2],"x", sep = "")
+```
+
+Setelah dilakukan tranformasi balik, didapatkan model dengan metode Hildreth-Lu sebagai berikut. $$y_i=-2.617253+1.869715x_t$$
+
+```{r}
+#Deteksi autokorelasi
+dwtest(model2HL)
+```
+
+Hasil uji Durbin-Watson menunjukkan bahwa nilai $DW$ setelah penanganan dengan metode Hildreth-Lu meningkat menjadi sebesar $1.6913$. Nilai $DW$ ini berada pada rentang daerah tidak ada autokorelasi, yaitu $d_U < DW < 4 - d_U$ ($1.6000 < 1.6913 < 2.4000$).Keberhasilan penanganan ini juga didukung oleh nilai $p\text{-value}$ sebesar $0.09155 > \alpha \ (5\%)$, yang menunjukkan keputusan gagal tolak $H_0$. Dengan demikian, belum cukup bukti untuk menyatakan adanya autokorelasi pada sisaan model regresi setelah ditransformasi menggunakan metode Hildreth-Lu pada taraf nyata 5%
+
+## Perbandingan Metode pada data 2
+```{r}
+#Perbandingan
+# Hitung SSE
+sseModel2awal <- anova(model2_poly)$`Sum Sq`[-1]
+sseModel2CO   <- sum(model2CO$residuals^2) 
+sseModel2HL   <- anova(model2HL)$`Sum Sq`[-1]
+
+# Hitung MSE (menggunakan panjang data Sales)
+n <- length(data2$sales)
+mseModel2awal <- sseModel2awal / n
+mseModel2CO   <- sseModel2CO / n
+mseModel2HL   <- sseModel2HL / n
+
+# Matriks Perbandingan
+akurasi <- matrix(c(sseModel2awal, sseModel2CO, sseModel2HL,
+                    mseModel2awal, mseModel2CO, mseModel2HL), 
+                  nrow = 2, ncol = 3, byrow = TRUE)
+
+colnames(akurasi) <- c("Model Awal", "Model Cochrane-Orcutt", "Model Hildreth-Lu")
+row.names(akurasi) <- c("SSE", "MSE")
+
+akurasi
+```
+
+Berdasarkan tabel perbandingan nilai SSE dan MSE, Model Cochrane-Orcutt menghasilkan nilai SSE ($1.3899076$) dan MSE ($0.2291156$) paling kecil dibandingkan Model Awal OLS maupun Model Hildreth-Lu. Kedua metode penanganan (Cochrane-Orcutt dan Hildreth-Lu) telah berhasil mengatasi masalah autokorelasi (dibuktikan dengan nilai $p\text{-value} > 0.05$ pada uji Durbin-Watson setelah penanganan). Dengan memperhatikan kriteria kebaikan model (SSE dan MSE terkecil), Model Cochrane-Orcutt dipilih sebagai model terbaik untuk data ini.
