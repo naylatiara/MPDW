@@ -1,0 +1,386 @@
+---
+title: "Latihan Praktikum 4 MPDW"
+author: "Nayla Tiara Zahira"
+date: "2026-09-17"
+output: rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Proses MA(2)
+
+## Pembangkitan Proses MA(2)
+
+### Pembangkitan manual
+```{r}
+set.seed(1234)
+wn <- rnorm(300, mean = 0, sd=1)
+ma <- numeric(300)
+ma[1] <- wn[1]
+ma[2] <- wn[2] + 0.4 * wn[1]
+```
+
+```{r}
+for(i in 3:300){
+  ma[i] <- wn[i] + 0.4 * wn[i-1] + 0.6 *wn[i-2]
+}
+ma <- ts(ma)
+ma
+```
+
+### Pembangkitan dengan arima.sim
+```{r}
+ma2 <- arima.sim(list(order=c(0,0,2), ma=c(0.4, 0.6)), n=300)
+ma2
+```
+
+## Karakteristik MA(2)
+### Plot Time Series
+```{r}
+ts.plot(ma, main = "Plot Time Series MA(2)", ylab = "Yt")
+```
+
+Berdasarkan plot time series, terlihat bahwa data MA(2) yang dibangkitkan adalah stasioner dalam rataan
+
+### Plot ACF
+```{r}
+acf(ma, lag.max=20, main = "Plot ACF MA(2)")
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa ACF cuts off di lag kedua
+
+### Plot PACF
+```{r}
+pacf(ma, lag.max = 20, main = "Plot PACF MA(2)")
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa plot PACF secara sinusoidal
+
+### Plot EACF
+```{r}
+library(TSA)
+TSA::eacf(ma)
+```
+
+Berdasarkan plot EACF tersebut, vertex segitiga huruf "o" terletak di pojok kiri atas pada koordinat AR(0) dan MA(2), yang mengindikasikan bahwa model yang paling tepat adalah MA(2)
+
+## Scatterplot Antar Lag
+
+```{r}
+# Menghitung autokorelasi teoretis MA(2) dengan theta1 = 0.4 dan theta2 = 0.6
+teoritis_acf <- ARMAacf(ma = c(0.4, 0.6), lag.max = 3)
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-1}$ (Lag 1)
+```{r}
+yt_ma <- ma[-1]
+yt_1_ma <- ma[-300]
+
+plot(y= yt_ma, x= yt_1_ma, main = "Scatterplot Yt vs Yt-1", xlab = "YT-1", ylab = "Yt",  pch = 20, col = "darkgreen")
+```
+
+
+Berdasarkan scatterplot tersebut, terlihat bahwa hubungan positif antara $Y_t$ dengan $Y_{t-1}$. 
+
+```{r}
+#Nilai korelasi sampel lag 1
+kor_sampel_1 <- cor(yt_ma, yt_1_ma)
+kor_teoritis_1 <- teoritis_acf[2]
+
+cat("Korelasi Sampel   :", kor_sampel_1, "\n")
+cat("Korelasi Teoritis :", kor_teoritis_1, "\n\n")
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-2}$ (Lag 2)
+```{r}
+yt_ma2 <- ma[-c(1, 2)]
+yt_2_ma <- ma[1:(length(ma)-2)]
+
+plot(y= yt_ma2, x = yt_2_ma, main = "Scatterplot Yt vs Yt-2", xlab = "Yt-2", ylab = "Yt", pch = 20, col = "darkorange")
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa hubungan positif antara $Y_t$ dengan $Y_{t-2}$. 
+
+```{r}
+#Nilai korelasi sampel lag 2
+kor_sampel_2 <- cor(yt_ma2, yt_2_ma)
+kor_teoritis_2 <- teoritis_acf[3]
+
+cat("Korelasi Sampel    :", kor_sampel_2, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_2, "\n\n")
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-3}$ (Lag 3)
+```{r}
+yt_ma3   <- ma[-c(1, 2, 3)]
+yt_3_ma3 <- ma[1:(length(ma)-3)]
+
+plot(y= yt_ma3, x = yt_3_ma3, main = "Scatterplot Yt vs Yt-3", xlab = "Yt-3", ylab = "Yt", pch = 20, col = "purple")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-3}$ menunjukkan pola penyebaran titik yang acak dan menyebar secara merata tanpa membentuk tren linier yang jelas, menandakan tidak adanya korelasi yang signifikan antara nilai saat ini dengan nilai pada lag ke-3.
+
+```{r}
+#Nilai korelasi sampel lag 3
+kor_sampel_3   <- cor(yt_ma3, yt_3_ma3)
+kor_teoritis_3 <- teoritis_acf[4]
+
+cat("Korelasi Sampel    :", kor_sampel_3, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_3, "\n")
+```
+
+# Proses AR(2)
+## Pembangkitan Proses MA(2)
+
+### Pembangkitan manual
+```{r}
+set.seed(1234)
+
+wn <- rnorm(300, mean = 0, sd = 1)
+n <- length(wn)
+
+ar <- numeric(n)
+ar[1] <- wn[1]                                     
+ar[2] <- wn[2] + 0.5 * ar[1]
+```
+
+```{r}
+for (i in 3:n) {
+  ar[i] <- wn[i] + 0.5 * ar[i - 1] + 0.2 * ar[i - 2] # Rumus AR(2): Yt = e_t + phi1*Yt-1 + phi2*Yt-2
+}
+ar <- ts(ar)
+ar
+```
+
+### Pembangkitan dengan arima.sim
+```{r}
+ar2_sim <- arima.sim(list(order=c(2,0,0), ar=c(0.5, 0.2)), n=300)
+ar2_sim
+```
+
+## Karakteristik AR(2)
+### Plot Time Series
+```{r}
+ts.plot(ar, main = "Plot Time Series AR(2)", ylab = "Yt", col = "blue")
+```
+
+Berdasarkan plot time serirs tersebut, terligat bahwa data cenderung stasioner pada rataan
+
+### Plot ACF
+```{r}
+acf(ar, lag.max = 20, main = "Plot ACF AR(2)")
+```
+
+Plot ACF untuk proses AR(2) menunjukkan pola meluruh (tails off) secara perlahan dan eksponensial pada lag-lag awal, yang merupakan ciri khas dari model autoregressive.
+
+### Plot PCAF
+```{r}
+pacf(ar, lag.max = 20, main = "Plot PACF AR(2)")
+```
+
+Plot PACF untuk proses AR(2) menunjukkan pemotongan yang signifikan (cuts off) hanya pada lag 1 dan lag 2, yang mengindikasikan ordo Autoregressive sebesar 2.
+
+### Plot EACF
+```{r}
+TSA::eacf(ar)
+```
+
+Berdasarkan plot EACF tersebut, vertex segitiga huruf "o" terletak di pojok kiri koordinat AR(2) dan MA(0), yang mengindikasikan bahwa model yang paling tepat adalah AR(2)
+
+## Scatterplot Antar Lag
+
+```{r}
+# Hitung nilai teoretis AR(2) menggunakan ARMAacf (mengambil lag 1 sampai 3)
+teoritis_ar_acf <- ARMAacf(ar = c(0.5, 0.2), lag.max = 3)
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-1}$ (Lag 1)
+```{r}
+yt_ar1   <- ar[-1]
+yt_1_ar1 <- ar[1:(length(ar)-1)]
+
+plot(y = yt_ar1, x = yt_1_ar1, main = "Scatterplot Yt vs Yt-1 (Lag 1)", xlab = "Yt-1", ylab = "Yt", pch = 20, col = "darkgreen")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-1}$ menunjukkan pola penyebaran titik yang membentuk korelasi positif yang kuat dan linier, menandakan adanya hubungan yang erat antara nilai saat ini dengan nilai satu periode sebelumnya.
+
+```{r}
+#Nilai korelasi sampel lag 1
+kor_sampel_1   <- cor(yt_ar1, yt_1_ar1)
+kor_teoritis_1 <- teoritis_ar_acf[2]
+
+cat("Korelasi Sampel    :", kor_sampel_1, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_1, "\n\n")
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-2}$ (Lag 2)
+```{r}
+yt_ar2   <- ar[-c(1, 2)]
+yt_2_ar2 <- ar[1:(length(ar)-2)]
+
+plot(y = yt_ar2, x = yt_2_ar2, main = "Scatterplot Yt vs Yt-2 (Lag 2)", xlab = "Yt-2", ylab = "Yt", pch = 20, col = "darkorange")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-2}$ menunjukkan pola penyebaran titik yang membentuk korelasi positif yang linier, menandakan adanya hubungan yang erat antara nilai saat ini dengan nilai dua periode sebelumnya.
+
+```{r}
+#Nilai korelasi sampel lag 2
+kor_sampel_2   <- cor(yt_ar2, yt_2_ar2)
+kor_teoritis_2 <- teoritis_ar_acf[3]
+
+cat("Korelasi Sampel    :", kor_sampel_2, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_2, "\n\n")
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-3}$ (Lag 3)
+```{r}
+yt_ar3   <- ar[-c(1, 2, 3)]
+yt_3_ar3 <- ar[1:(length(ar)-3)]
+
+plot(y = yt_ar3, x = yt_3_ar3, main = "Scatterplot Yt vs Yt-3 (Lag 3)", xlab = "Yt-3", ylab = "Yt", pch = 20, col = "purple")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-3}$ menunjukkan pola sebaran titik yang agak melebar dengan korelasi positif yang lebih lemah dibandingkan lag-lag sebelumnya, menandakan hubungan yang semakin berkurang antara nilai saat ini dengan nilai tiga periode sebelumnya.
+
+```{r}
+#Nilai korelasi sampel lag 3
+kor_sampel_3   <- cor(yt_ar3, yt_3_ar3)
+kor_teoritis_3 <- teoritis_ar_acf[4]
+
+cat("Korelasi Sampel    :", kor_sampel_3, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_3, "\n")
+```
+
+# Pembangkitan Proses ARMA(2,2)
+
+## Pembangkitan ARMA (2,2)
+
+### Pembangkitan manual
+```{r}
+set.seed(1234)
+
+wn <- rnorm(300, mean = 0, sd = 1)
+n <- length(wn)
+
+phi1 <- 0.5; phi2 <- 0.2
+theta1 <- 0.4; theta2 <- 0.6
+
+y.arma <- numeric(n)
+y.arma[1] <- wn[1]                                         
+y.arma[2] <- phi1 * y.arma[1] + wn[2] + theta1 * wn[1]
+```
+
+```{r}
+for (i in 3:n) {
+  y.arma[i] <- phi1 * y.arma[i - 1] + phi2 * y.arma[i - 2] + 
+               wn[i] + theta1 * wn[i - 1] + theta2 * wn[i - 2]
+}
+y.arma <- ts(y.arma)
+y.arma
+```
+
+### Pembangkitan arima.sim
+```{r}
+arma22_sim <- arima.sim(list(order=c(2,0,2), ar=c(0.5, 0.2), ma=c(0.4, 0.6)), n=300)
+arma22_sim
+```
+
+## Karakteristik ARMA(2,2)
+### Plot Time Series
+```{r}
+ts.plot(y.arma, main = "TS Manual ARMA(2,2)", ylab = "Yt", col = "blue")
+ts.plot(arma22_sim, main = "TS arima.sim ARMA(2,2)", ylab = "Yt", col = "red")
+```
+
+Berdasarkan plot time series tersebut, terlihat bahwa model ARMA(2,2) cenderung stasioner dalam rataan
+
+### Plot ACF
+```{r}
+acf(y.arma, main = "ACF Manual ARMA(2,2)")
+acf(arma22_sim, main = "ACF arima.sim ARMA(2,2)")
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa model ARMA(1,1) hasil simulasi memiliki plot ACF yang tails off, sesuai dengan teori yang ada
+
+### Plot PACF
+```{r}
+pacf(y.arma, main = "PACF Manual ARMA(2,2)")
+pacf(arma22_sim, main = "PACF arima.sim ARMA(2,2)")
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa model ARMA(2,2) hasil simulasi memiliki plot PACF yang tails off, sesuai dengan teori
+
+### Plot EACF
+```{r}
+TSA::eacf(y.arma)
+```
+
+Berdasarkan plot EACF tersebut, titik puncak (vertex) dari segitiga huruf "o" terletak pada koordinat AR(2) dan MA(2), yang mengindikasikan bahwa model deret waktu yang paling sesuai adalah **ARMA(2,2)**.
+
+## Scatterplot Antar Lag
+
+```{r}
+# Hitung nilai teoretis ARMA(2,2) menggunakan ARMAacf (lag 1 sampai 3)
+teoritis_arma_acf <- ARMAacf(ar = c(0.5, 0.2), ma = c(0.4, 0.6), lag.max = 3)
+```
+
+
+### Korelasi antara $Y_t$ dengan $Y_{t-1}$ (Lag 1)
+```{r}
+yt_arma1   <- y.arma[-1]
+yt_1_arma1 <- y.arma[1:(length(y.arma)-1)]
+
+plot(y = yt_arma1, x = yt_1_arma1, main = "Scatterplot Yt vs Yt-1 (Lag 1)", xlab = "Yt-1", ylab = "Yt", pch = 20, col = "darkgreen")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-1}$ pada model ARMA ini menunjukkan pola sebaran titik yang membentuk korelasi linier positif yang sangat kuat dan rapat, menandakan keterikatan yang erat antara nilai saat ini dengan nilai satu periode sebelumnya.
+
+```{r}
+#Nilai korelasi sampel lag 1
+kor_sampel_1   <- cor(yt_arma1, yt_1_arma1)
+kor_teoritis_1 <- teoritis_arma_acf[2]
+
+cat("Korelasi Sampel   :", kor_sampel_1, "\n")
+cat("Korelasi Teoritis :", kor_teoritis_1, "\n\n")
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-2}$ (Lag 2)
+```{r}
+yt_arma2   <- y.arma[-c(1, 2)]         
+yt_2_arma2 <- y.arma[1:(length(y.arma)-2)]
+
+plot(y = yt_arma2, x = yt_2_arma2, main = "Scatterplot Yt vs Yt-2 (Lag 2)", xlab = "Yt-2", ylab = "Yt", pch = 20, col = "darkorange")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-2}$ pada model ARMA ini menunjukkan pola sebaran titik yang membentuk korelasi linier positif yang jelas, mengindikasikan adanya hubungan yang kuat antara nilai saat ini dengan nilai dua periode sebelumnya.
+
+```{r}
+#Nilai korelasi sampel lag 2
+kor_sampel_2   <- cor(yt_arma2, yt_2_arma2)
+kor_teoritis_2 <- teoritis_arma_acf[3]
+
+cat("Korelasi Sampel    :", kor_sampel_2, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_2, "\n\n")
+```
+
+### Korelasi antara $Y_t$ dengan $Y_{t-3}$ (Lag 3)
+```{r}
+yt_arma3   <- y.arma[-c(1, 2, 3)]    
+yt_3_arma3 <- y.arma[1:(length(y.arma)-3)]
+
+plot(y = yt_arma3, x = yt_3_arma3, main = "Scatterplot Yt vs Yt-3 (Lag 3)", xlab = "Yt-3", ylab = "Yt", pch = 20, col = "purple")
+```
+
+Scatterplot antara $Y_t$ dan $Y_{t-3}$ pada model ARMA ini menunjukkan pola sebaran titik yang mulai melebar dengan korelasi positif yang semakin melunak, menandakan bahwa hubungan linier antara nilai saat ini dengan nilai tiga periode sebelumnya mulai melemah.
+
+```{r}
+#Nilai korelasi sampel lag 3
+kor_sampel_3   <- cor(yt_arma3, yt_3_arma3)
+kor_teoritis_3 <- teoritis_arma_acf[4]
+
+cat("Korelasi Sampel    :", kor_sampel_3, "\n")
+cat("Korelasi Teoritis  :", kor_teoritis_3, "\n")
+```
+
